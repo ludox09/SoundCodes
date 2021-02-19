@@ -39,9 +39,10 @@ Cs = (110.0)*p
 Cs = Cs + Ca
 
 # Positions parameters
-alpha = 0.5
+alpha = 0
 xp = 0.7
 xm = 0.7
+nmax = 90
 
 xNeck_LP = 0.65
 xBridge_LP = 0.95
@@ -49,17 +50,16 @@ xBridge_LP = 0.95
 xNeck_TL = 0.75
 xBridge_TL = 0.94
 
+xNeck   = {"Single Coil":xNeck_TL, "Humbucker":xNeck_LP}
+xBridge = {"Single Coil":xBridge_TL, "Humbucker":xBridge_LP}
+
+
 x_img_zero_TL = 441.0
 x_img_bridge_TL = 2025.0
 
 finalAmp = 0
 
 # Interface blocks
-pickuptype = ("Single Coil","Humbucker")
-pickupSelector = ("Neck","N+B","N-B","Bridge")
-check = [False,False,False]
-pick = pickuptype[0]
-picksel = pickupSelector[0]
 
 # Prepare figure #
 fig = plt.figure()
@@ -70,10 +70,19 @@ plt.grid(True,which="both",ls="-")
 plt.xlabel('Freq(Hz)')
 plt.ylabel('Gain(dB)')
 octfreq = ms.octprint(ax1)
+fstring=[octfreq[4,1], # E
+         octfreq[9,1], # A
+         octfreq[2,2], # D
+         octfreq[7,2], # G
+         octfreq[11,2], # B
+         octfreq[4,3]] # E
 
 flist = np.arange(1,10000,100)
-curve, = plt.plot(flist,flist,'r',markersize=3)
-point, = plt.plot(flist,flist,'ok',markersize=3)
+curve, = plt.plot(flist,flist,'r',markersize=3,linewidth=0.7)
+point, = plt.plot(flist,flist,'ok',markersize=2)
+decay1, = plt.plot(flist,flist,'or',markersize=2)
+decay2, = plt.plot(flist,flist,'og',markersize=2)
+decay3, = plt.plot(flist,flist,'ob',markersize=2)
 pickresp, = plt.plot(flist,flist,'b')
 txt = ax1.text(30,0.5,"f0:", size=10)
 plt.subplots_adjust(left=0.25, bottom=0.25)
@@ -100,22 +109,19 @@ ax2.add_artist(rect)
 
 # Widget
 axalpha = plt.axes([0.25, 0.11, 0.65, 0.02])
-salpha = Slider(axalpha, 'alpha', 0.001, 0.99, valinit=0.5)
-
-axxp = plt.axes([0.25, 0.08, 0.65, 0.02])
-sxp = Slider(axxp, 'xp', 0.001, 0.99, valinit=0.5)
+salpha = Slider(axalpha, 'alpha', 0, 5, valinit=1, valstep=1,valfmt="%d")
 
 axxm = plt.axes([0.25, 0.05, 0.65, 0.02])
 sxm = Slider(axxm, 'xm', 0.001, 0.99, valinit=0.5)
 
 checkax = plt.axes([0.05, 0.7, 0.15, 0.3])
 checks = CheckButtons(checkax, ('Pickup FR', 'xp','xm'), (False, False, False))
+check=[False,False,False]
 
+pickuptype = ("Single Coil","Humbucker")
 pickuptypeax = plt.axes([0.05, 0.4, 0.15, 0.3])
 pickup = RadioButtons(pickuptypeax, pickuptype)
-
-pickupselax = plt.axes([0.05, 0.1, 0.15, 0.3])
-pickupsel = RadioButtons(pickupselax, pickupSelector)
+pick=pickuptype[0]
 
 playax1 = plt.axes([0.5, 0.9, 0.10, 0.05])
 playax2 = plt.axes([0.6, 0.9, 0.10, 0.05])
@@ -155,85 +161,68 @@ def db(x):
 	return 10.0*np.log10(np.abs(x))
 	
 def Amplitude(alpha,xp):
-	f0=octfreq[4,1]*2**(alpha)
-	tf = []
-	flist =[]
-	for n in range(1,150):
-		flist.append(n*f0)
-		#tf.append(1.0/n)
-		#tf.append((2.0/(xp*(1-xp)))*np.sin(np.pi*n*xp)/float(n**2))
-		tf.append(np.sin(np.pi*n*xp)/float(n**2))
-	flist = np.array(flist)
-	tf = np.array(tf)
-	return flist,tf
+        f0 = fstring[int(alpha)]
+        tf = []
+        flist =[]
+        for n in range(1,nmax):
+            flist.append(n*f0)
+            #tf.append(1.0/n)
+            #tf.append((2.0/(xp*(1-xp)))*np.sin(np.pi*n*xp)/float(n**2))
+            tf.append(np.sin(np.pi*n*xp)/float(n**2))
+        flist = np.array(flist)
+        tf = np.array(tf)
+        return flist,tf
 
 def PositionFilter(xm):
 	pf = []
-	for n in range(1,150):
+	for n in range(1,nmax):
 		#tf.append(1.0/n)
 		pf.append(np.sin(np.pi*n*xm))
 	pf = np.array(pf)
 	return pf
 
+def update_alpha(val):
+    global alpha
+    alpha = salpha.val
+    update()
 
-def update(val):
+#def update_xm():
+#    global xp
+#    xp = sxp.val
+
+def update_xm():
+    global xm
+    xm = sxm.val
+    update()
+
+def update_checks(val):
+    global check
+    check = [checks.lines[0][0].get_visible(),checks.lines[1][0].get_visible(),checks.lines[2][0].get_visible()]
+    update()
+
+def update_pickup(val):
+    global pick
+    if val in pickuptype:
+    	pick = val
+    update()
+ 
+def update():
     global alpha
     global xp
     global xm
     global check
+    global checks
     global pick
     global picksel
     global finalAmp
     global flist
     global tf
-
-    try:
-    	alpha = salpha.val
-    except:
-    	pass
-
-    try:
-    	xp = sxp.val
-    except:
-    	pass
-
-    try:
-        xp = val
-    except:
-        pass
-
-    try:
-    	xm = sxm.val
-    except:
-    	pass
-
-    try:
-    	check = [checks.lines[0][0].get_visible(),checks.lines[1][0].get_visible(),checks.lines[2][0].get_visible()]
-    except:
-    	pass
-
-    if val in pickuptype:
-    	pick = val
- 
-    if val in pickupSelector:
-    	picksel = val
-    	
-    print(alpha, check, pick,xp,xm)
-    if (pick==pickuptype[0]):
-       # Single Coil #
-       if (picksel==pickupSelector[0]):
-           xm = xNeck_TL
-       elif (picksel==pickupSelector[3]):
-           xm = xBridge_TL
-    elif (pick==pickuptype[1]):
-       # Humbucker #
-       if (picksel==pickupSelector[0]):
-           xm = xNeck_LP
-       elif (picksel==pickupSelector[3]):
-           xm = xBridge_LP
+   
    	
     flist,tf = Amplitude(alpha, xp)
     pf = PositionFilter(xm)
+
+    # Activate checked module
     if (check[1],check[2])==(False,False):
     	tf = tf*0.0+1.0
     elif (check[1],check[2])==(False,True):
@@ -244,7 +233,7 @@ def update(val):
     elif (check[1],check[2])==(True,True):
     	tf = tf*pf
      
-    
+    # Pickup frequency response filter 
     if pick == pickuptype[0]:
     	f0, Q, G = RLC(Rs,Ls,Cs,flist)
     if pick == pickuptype[1]:
@@ -280,7 +269,10 @@ def update(val):
     txt.set_text("f0: %.2f"%(flist[0]))
     fig.canvas.draw_idle() 
 
-def playsound(x):
+def fdecay(f,t):
+    return np.exp(-f*t/f[0])
+
+def playsound(mode=0):
     global alpha
     global xp
     global xm
@@ -290,35 +282,70 @@ def playsound(x):
     global finalAmp
     global flist
     global tf
- 
-    flist,tf = Amplitude(alpha, xp)
-    pf = PositionFilter(xm)
 
-    #print(flist)
-    #print(finalAmp)
+    if mode == 0:
+        flist,tf = Amplitude(alpha, xp)
+        pf = PositionFilter(xm)
 
-    #play.label.set_text("Playing")
-    f1 = 110
-    t0 = 0.3
-    #a1 = np.exp(-t/t0)
-    #a1 = 2.0*np.exp(-t/t0)*(t**0.2)
+        t1 = 0.1
+        t2 = 0.2
+        t3 = 0.3
+        #a1 = np.exp(-t/t0)
+        #a1 = 2.0*np.exp(-t/t0)*(t**0.2)
 
-    note = 0
-    for amp,fa in zip(finalAmp,flist):
-        note = note + np.sin(fa*t*2*np.pi)*amp*np.exp(-fa*t/flist[0])
-    note = note/np.max(note) # Renormalize
-    
-    # Ensure that highest value is in 16-bit range
-    audio = note * (2**15 - 1) / np.max(np.abs(note))
-    # Convert to 16-bit data
-    audio = audio.astype(np.int16)
-    
-    print("xp == ",xp)
-    # Start playback
-    play_obj = sa.play_buffer(audio, 1, 2, fs)
-    
-    #play.label.set_text("Play")
-    #fig.canvas.draw_idle() 
+        #note = 0
+        #for amp,fa in zip(finalAmp,flist):
+        #    note = note + np.sin(fa*t*2*np.pi)*amp*np.exp(-fa*t/flist[0])
+        tt,ff = np.meshgrid(t,flist)
+
+        notes = np.sin(2.0*np.pi*ff*tt)*fdecay(ff,tt)
+        note = np.sum(notes*finalAmp[:,None],axis=0)
+        note = note/np.max(note) # Renormalize
+        
+        # Ensure that highest value is in 16-bit range
+        audio = note * (2**15 - 1) / np.max(np.abs(note))
+        # Convert to 16-bit data
+        audio = audio.astype(np.int16)
+        
+        #print("xp == ",xp)
+        # Start playback
+
+        print(6)
+        play_obj = sa.play_buffer(audio, 1, 2, fs)
+        decay1.set_xdata(flist)
+        decay2.set_xdata(flist)
+        decay3.set_xdata(flist)
+        decay1.set_ydata(db(finalAmp*fdecay(flist,t1)))
+        decay2.set_ydata(db(finalAmp*fdecay(flist,t2)))
+        decay3.set_ydata(db(finalAmp*fdecay(flist,t3)))
+        
+        #play.label.set_text("Play")
+        #fig.canvas.draw_idle()
+
+    if mode == 1:
+
+        t0 = 0.3
+        note = 0
+        for alpha in range(6):
+            flist,tf = Amplitude(alpha, xp)
+            pf = PositionFilter(xm)
+
+            for amp,fa in zip(finalAmp,flist):
+                note = note + np.sin(fa*t*2*np.pi)*amp*np.exp(-fa*t/flist[0])
+       
+        note = note/np.max(note) # Renormalize
+         
+        # Ensure that highest value is in 16-bit range
+        audio = note * (2**15 - 1) / np.max(np.abs(note))
+        # Convert to 16-bit data
+        audio = audio.astype(np.int16)
+        
+        # Start playback
+        play_obj = sa.play_buffer(audio, 1, 4, fs)
+        
+        #play.label.set_text("Play")
+        #fig.canvas.draw_idle()
+
 
 def playupdate1(val):
     playsound(1)
@@ -328,6 +355,9 @@ def playupdate2(val):
 
 def onclick(event):
     global xp
+    global xm
+    global pick
+
     #global rect
     xdata = event.xdata
     ydata = event.ydata
@@ -335,33 +365,34 @@ def onclick(event):
     if(rect.contains(event)[0]):
         if(rect.get_x() == xneck):
             rect.set_x(xbridge)
+            xm = xBridge[pick]
+
+
+
         else:
             rect.set_x(xneck)
-
+            xm = xNeck[pick]
+        update()
         fig.canvas.draw() 
-
-
 
     if x_img_zero_TL < xdata and xdata < x_img_bridge_TL and 330 < ydata and ydata < 475:
         #print('%s click: button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
         #  ('double' if event.dblclick else 'single', event.button,
         #   event.x, event.y, event.xdata, event.ydata))
-
         xp = (xdata - x_img_zero_TL)/(x_img_bridge_TL - x_img_zero_TL)
-        update(xp)
-        print("xp = ",xp)
-        playsound(1)
-
+        update()
+        #print("xp = ",xp)
+        playsound()
 
    
-salpha.on_changed(update)
-sxp.on_changed(update)
-sxm.on_changed(update)
-checks.on_clicked(update)
-pickup.on_clicked(update)
-pickupsel.on_clicked(update)
+salpha.on_changed(update_alpha)
+sxm.on_changed(update_xm)
+checks.on_clicked(update_checks)
+pickup.on_clicked(update_pickup)
+
 play1.on_clicked(playupdate1)
 play2.on_clicked(playupdate2)
+
 cid = fig.canvas.mpl_connect('button_press_event', onclick)
 ax2.imshow(timg)
 plt.show()
